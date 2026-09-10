@@ -77,12 +77,12 @@ class CpanelClient:
         )
 
     async def del_pop(self, *, localpart: str, domain: str) -> Any:
-        # email param is typically the full address or localpart depending on cPanel version;
-        # full address is widely accepted.
+        # UAPI name is delete_pop (not API2 delpop / the incorrect del_pop).
         return await self._execute(
             "Email",
-            "del_pop",
+            "delete_pop",
             {
-                "email": f"{localpart}@{domain}",
+                "email": localpart,
+                "domain": domain,
             },
         )
