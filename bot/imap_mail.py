@@ -76,9 +76,13 @@ def _extract_body(msg: Message) -> str:
             elif ctype == "text/html":
                 html_parts.append(_html_to_text(text))
         if plain_parts:
-            return "\n".join(plain_parts).strip()
+            joined = "\n".join(plain_parts).strip()
+            if joined:
+                return joined
         if html_parts:
-            return "\n".join(html_parts).strip()
+            joined = "\n".join(html_parts).strip()
+            if joined:
+                return joined
         return "(no readable body)"
 
     try:
@@ -88,8 +92,25 @@ def _extract_body(msg: Message) -> str:
     except Exception:  # noqa: BLE001
         return "(unable to decode body)"
     if msg.get_content_type() == "text/html":
-        return _html_to_text(text)
+        return _html_to_text(text) or "(empty body)"
     return text.strip() or "(empty body)"
+
+
+def _raw_from_fetch(data: list) -> bytes | None:
+    """Pick the largest literal payload from an IMAP FETCH response."""
+    best: bytes | None = None
+    for item in data:
+        if not isinstance(item, tuple) or len(item) < 2:
+            continue
+        payload = item[1]
+        if isinstance(payload, memoryview):
+            payload = payload.tobytes()
+        if not isinstance(payload, (bytes, bytearray)):
+            continue
+        raw = bytes(payload)
+        if best is None or len(raw) > len(best):
+            best = raw
+    return best
 
 
 class ImapClient:
@@ -130,14 +151,20 @@ class ImapClient:
     def fetch_message(self, address: str, password: str, uid: str, max_chars: int = 3500) -> MessageBody:
         client = self._connect(address, password)
         try:
-            typ, data = client.uid("fetch", uid, "(RFC822.HEADER BODY.PEEK[])")
-            if typ != "OK" or not data or not isinstance(data[0], tuple):
-                # Fallback simpler fetch
-                typ, data = client.uid("fetch", uid, "(RFC822)")
-            if typ != "OK" or not data or not isinstance(data[0], tuple):
+            # BODY.PEEK[] returns the full RFC822 message without setting \Seen.
+            # Do not combine with RFC822.HEADER — that returns header-only bytes first
+            # and we used to parse that as the whole message (empty body).
+            raw: bytes | None = None
+            for spec in ("(BODY.PEEK[])", "(RFC822)"):
+                typ, data = client.uid("fetch", uid, spec)
+                if typ != "OK" or not data:
+                    continue
+                raw = _raw_from_fetch(data)
+                if raw:
+                    break
+            if not raw:
                 raise ImapError(f"Message UID {uid} not found")
 
-            raw = data[0][1]
             msg = email.message_from_bytes(raw)
             subject = _decode_header_value(msg.get("Subject"))
             from_ = _decode_header_value(msg.get("From"))
