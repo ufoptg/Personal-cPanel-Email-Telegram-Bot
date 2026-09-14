@@ -42,6 +42,7 @@ python -m bot.main
 | `/start` | Help |
 | `/create <localpart> [password]` | Create `localpart@EMAIL_DOMAIN` |
 | `/list` | List bot-created addresses |
-| `/inbox <email\|localpart> [n]` | Recent messages |
-| `/read <email\|localpart> <uid>` | Read a message |
+| `/inbox <email\|localpart> [n]` | Recent inbox messages |
+| `/spam <email\|localpart> [n]` | Recent spam/junk messages |
+| `/read <email\|localpart> <uid> [spam]` | Read a message (`spam` for spam-folder UIDs) |
 | `/delete <email\|localpart>` | Delete from cPanel and bot |

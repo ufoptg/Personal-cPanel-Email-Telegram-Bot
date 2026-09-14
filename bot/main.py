@@ -16,6 +16,7 @@ from bot.handlers.delete import delete_command
 from bot.handlers.inbox import inbox_command
 from bot.handlers.list_emails import list_command
 from bot.handlers.read import read_command
+from bot.handlers.spam import spam_command
 from bot.handlers.start import start_command
 from bot.imap_mail import ImapClient
 
@@ -61,6 +62,7 @@ def main() -> None:
     application.add_handler(CommandHandler("create", create_command))
     application.add_handler(CommandHandler("list", list_command))
     application.add_handler(CommandHandler("inbox", inbox_command))
+    application.add_handler(CommandHandler("spam", spam_command))
     application.add_handler(CommandHandler("read", read_command))
     application.add_handler(CommandHandler("delete", delete_command))
 

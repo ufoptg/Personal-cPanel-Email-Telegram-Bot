@@ -31,8 +31,8 @@ async def read_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     if len(context.args) < 2:
         await update.effective_message.reply_text(
-            "Usage: /read <email|localpart> <uid>\n"
-            "Get uid from /inbox"
+            "Usage: /read <email|localpart> <uid> [spam]\n"
+            "Get uid from /inbox or /spam"
         )
         return
 
@@ -45,13 +45,31 @@ async def read_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     uid = context.args[1].strip()
     if not uid.isdigit():
-        await update.effective_message.reply_text("uid must be a number from /inbox.")
+        await update.effective_message.reply_text(
+            "uid must be a number from /inbox or /spam."
+        )
         return
+
+    from_spam = False
+    if len(context.args) >= 3:
+        folder_arg = context.args[2].strip().lower()
+        if folder_arg in {"spam", "junk"}:
+            from_spam = True
+        else:
+            await update.effective_message.reply_text(
+                "Optional third argument must be 'spam' (for spam-folder UIDs)."
+            )
+            return
 
     password = crypto.decrypt(account.password_enc)
     try:
+        mailbox = "INBOX"
+        if from_spam:
+            mailbox = await asyncio.to_thread(
+                imap.resolve_spam_mailbox, account.address, password
+            )
         message = await asyncio.to_thread(
-            imap.fetch_message, account.address, password, uid
+            imap.fetch_message, account.address, password, uid, 3500, mailbox
         )
     except ImapError as exc:
         logger.warning("IMAP read failed for %s uid=%s: %s", account.address, uid, exc)

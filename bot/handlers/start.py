@@ -14,7 +14,8 @@ Commands:
 /create <localpart> [password] — create an address
 /list — list addresses created via this bot
 /inbox <email|localpart> [n] — recent inbox messages
-/read <email|localpart> <uid> — read a message
+/spam <email|localpart> [n] — recent spam/junk messages
+/read <email|localpart> <uid> [spam] — read a message
 /delete <email|localpart> — delete address from cPanel and bot
 
 You are authorized."""

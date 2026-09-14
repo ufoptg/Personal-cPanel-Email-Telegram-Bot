@@ -1,4 +1,4 @@
-"""IMAP helpers for listing and reading inbox messages."""
+"""IMAP helpers for listing and reading mailbox messages."""
 
 from __future__ import annotations
 
@@ -34,6 +34,23 @@ class MessageBody:
 
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
+_LIST_QUOTED_RE = re.compile(rb'"((?:\\.|[^"\\])*)"\s*$')
+_LIST_ATOM_RE = re.compile(rb"(\S+)\s*$")
+
+# Common Spam/Junk folder names across cPanel, Dovecot, Gmail-style hosts.
+_SPAM_CANDIDATES = (
+    "Spam",
+    "spam",
+    "Junk",
+    "junk",
+    "INBOX.Spam",
+    "INBOX.spam",
+    "INBOX.Junk",
+    "INBOX.junk",
+    "Junk E-mail",
+    "Bulk Mail",
+    "[Gmail]/Spam",
+)
 
 
 class ImapError(Exception):
@@ -113,27 +130,110 @@ def _raw_from_fetch(data: list) -> bytes | None:
     return best
 
 
+def _mailbox_basename(name: str) -> str:
+    for sep in ("/", "."):
+        if sep in name:
+            return name.rsplit(sep, 1)[-1]
+    return name
+
+
+def _parse_list_mailbox(line: bytes) -> str | None:
+    """Extract mailbox name from an IMAP LIST response line."""
+    match = _LIST_QUOTED_RE.search(line)
+    if match:
+        raw = match.group(1).replace(rb"\"", b'"').replace(rb"\\", b"\\")
+        return raw.decode("utf-8", errors="replace")
+    match = _LIST_ATOM_RE.search(line)
+    if match:
+        return match.group(1).decode("utf-8", errors="replace")
+    return None
+
+
+def _is_spam_mailbox(name: str) -> bool:
+    base = _mailbox_basename(name).lower().replace("_", " ").replace("-", " ")
+    if base in {"spam", "junk", "bulk mail", "junk e mail", "junk email"}:
+        return True
+    return "spam" in base or "junk" in base
+
+
 class ImapClient:
     def __init__(self, config: Config) -> None:
         self._config = config
 
-    def _connect(self, address: str, password: str) -> imaplib.IMAP4_SSL:
+    def _login(self, address: str, password: str) -> imaplib.IMAP4_SSL:
         try:
             client = imaplib.IMAP4_SSL(self._config.imap_host, self._config.imap_port)
             client.login(address, password)
-            typ, _ = client.select("INBOX", readonly=True)
-            if typ != "OK":
-                client.logout()
-                raise ImapError("Failed to select INBOX")
             return client
         except imaplib.IMAP4.error as exc:
             raise ImapError(f"IMAP login failed: {exc}") from exc
         except OSError as exc:
             raise ImapError(f"IMAP connection failed: {exc}") from exc
 
-    def list_recent(self, address: str, password: str, limit: int = 10) -> list[MessageOverview]:
+    def _select(self, client: imaplib.IMAP4_SSL, mailbox: str) -> None:
+        typ, _ = client.select(mailbox, readonly=True)
+        if typ != "OK":
+            raise ImapError(f"Failed to select mailbox {mailbox!r}")
+
+    def _connect(self, address: str, password: str, mailbox: str = "INBOX") -> imaplib.IMAP4_SSL:
+        client = self._login(address, password)
+        try:
+            self._select(client, mailbox)
+        except ImapError:
+            try:
+                client.logout()
+            except Exception:  # noqa: BLE001
+                pass
+            raise
+        return client
+
+    def _list_mailboxes(self, client: imaplib.IMAP4_SSL) -> list[str]:
+        typ, data = client.list()
+        if typ != "OK" or not data:
+            return []
+        names: list[str] = []
+        for item in data:
+            if not isinstance(item, (bytes, bytearray)):
+                continue
+            name = _parse_list_mailbox(bytes(item))
+            if name:
+                names.append(name)
+        return names
+
+    def resolve_spam_mailbox(self, address: str, password: str) -> str:
+        """Find the account's Spam/Junk folder name."""
+        client = self._login(address, password)
+        try:
+            listed = self._list_mailboxes(client)
+            for name in listed:
+                if _is_spam_mailbox(name):
+                    return name
+            # Fall back to trying common names even if LIST omitted them.
+            for name in _SPAM_CANDIDATES:
+                try:
+                    self._select(client, name)
+                    return name
+                except ImapError:
+                    continue
+            raise ImapError(
+                "No Spam/Junk folder found. "
+                "Create one in webmail, or ask the host which IMAP folder name they use."
+            )
+        finally:
+            try:
+                client.logout()
+            except Exception:  # noqa: BLE001
+                pass
+
+    def list_recent(
+        self,
+        address: str,
+        password: str,
+        limit: int = 10,
+        mailbox: str = "INBOX",
+    ) -> list[MessageOverview]:
         limit = max(1, min(limit, 50))
-        client = self._connect(address, password)
+        client = self._connect(address, password, mailbox=mailbox)
         try:
             typ, data = client.uid("search", None, "ALL")
             if typ != "OK" or not data or not data[0]:
@@ -148,8 +248,15 @@ class ImapClient:
             except Exception:  # noqa: BLE001
                 pass
 
-    def fetch_message(self, address: str, password: str, uid: str, max_chars: int = 3500) -> MessageBody:
-        client = self._connect(address, password)
+    def fetch_message(
+        self,
+        address: str,
+        password: str,
+        uid: str,
+        max_chars: int = 3500,
+        mailbox: str = "INBOX",
+    ) -> MessageBody:
+        client = self._connect(address, password, mailbox=mailbox)
         try:
             # BODY.PEEK[] returns the full RFC822 message without setting \Seen.
             # Do not combine with RFC822.HEADER — that returns header-only bytes first
