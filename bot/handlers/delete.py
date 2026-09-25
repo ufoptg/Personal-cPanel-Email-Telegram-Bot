@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 @require_auth
 async def delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     assert update.effective_message
+    assert update.effective_user
 
     config: Config = context.bot_data["config"]
     store: AccountStore = context.bot_data["store"]
@@ -31,12 +32,15 @@ async def delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
         return
 
-    localpart = resolve_localpart(context.args[0], config.email_domain)
+    domain = config.domain_for(update.effective_user.id)
+    localpart = resolve_localpart(context.args[0], domain, config.known_domains)
     if not localpart:
         await update.effective_message.reply_text("Invalid address or wrong domain.")
         return
 
-    account = await get_tracked_account(store, config, localpart)
+    account = await get_tracked_account(
+        store, config, context.args[0], update.effective_user.id
+    )
     if not account:
         await update.effective_message.reply_text(
             "Unknown address. Only bot-created addresses can be deleted here. Use /list."

@@ -17,9 +17,9 @@ cp .env.example .env
 Edit `.env`:
 
 1. `TELEGRAM_BOT_TOKEN` from [@BotFather](https://t.me/BotFather)
-2. `ALLOWED_TELEGRAM_IDS` — your numeric Telegram user ID (e.g. from `@userinfobot`)
+2. `ALLOWED_TELEGRAM_IDS` — comma-separated Telegram user IDs (e.g. from `@userinfobot`). The **first** ID is primary and uses `EMAIL_DOMAIN`; any other allowed ID uses `SUB_DOMAIN_EMAIL`
 3. cPanel host, user, and API token (cPanel → Security → API Tokens)
-4. `EMAIL_DOMAIN`, `IMAP_HOST` (often `mail.yourdomain.com`)
+4. `EMAIL_DOMAIN`, `SUB_DOMAIN_EMAIL`, `IMAP_HOST` (often `mail.yourdomain.com`)
 5. Generate `FERNET_KEY`:
 
 ```bash
@@ -40,7 +40,7 @@ python -m bot.main
 | Command | Description |
 |---------|-------------|
 | `/start` | Help |
-| `/create <localpart> [password]` | Create `localpart@EMAIL_DOMAIN` |
+| `/create <localpart> [password]` | Create address on your domain (`EMAIL_DOMAIN` for primary ID, else `SUB_DOMAIN_EMAIL`) |
 | `/list` | List bot-created addresses |
 | `/inbox <email\|localpart> [n]` | Recent inbox messages |
 | `/spam <email\|localpart> [n]` | Recent spam/junk messages |

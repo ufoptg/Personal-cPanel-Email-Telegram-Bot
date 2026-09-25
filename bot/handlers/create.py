@@ -27,10 +27,12 @@ async def create_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     crypto: PasswordCrypto = context.bot_data["crypto"]
     cpanel: CpanelClient = context.bot_data["cpanel"]
 
+    domain = config.domain_for(update.effective_user.id)
+
     if not context.args:
         await update.effective_message.reply_text(
             "Usage: /create <localpart> [password]\n"
-            f"Creates localpart@{config.email_domain}"
+            f"Creates localpart@{domain}"
         )
         return
 
@@ -41,7 +43,7 @@ async def create_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
         return
 
-    existing = await store.get_by_local_or_address(localpart, config.email_domain)
+    existing = await store.get_by_local_or_address(localpart, domain)
     if existing:
         await update.effective_message.reply_text(
             f"{existing.address} is already tracked by this bot."
@@ -54,14 +56,14 @@ async def create_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.effective_message.reply_text("Password must be at least 8 characters.")
         return
 
-    address = f"{localpart}@{config.email_domain}"
+    address = f"{localpart}@{domain}"
     await update.effective_message.reply_text(f"Creating {address}…")
 
     try:
         await cpanel.add_pop(
             localpart=localpart,
             password=password,
-            domain=config.email_domain,
+            domain=domain,
         )
     except CpanelError as exc:
         logger.warning("cPanel add_pop failed for %s: %s", address, exc)
@@ -76,7 +78,7 @@ async def create_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         password_enc = crypto.encrypt(password)
         await store.add(
             localpart=localpart,
-            domain=config.email_domain,
+            domain=domain,
             password_enc=password_enc,
             telegram_user_id=update.effective_user.id,
         )

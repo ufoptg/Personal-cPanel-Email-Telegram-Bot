@@ -67,8 +67,10 @@ def main() -> None:
     application.add_handler(CommandHandler("delete", delete_command))
 
     logger.info(
-        "Starting bot (domain=%s, allowed_users=%s)",
+        "Starting bot (primary_domain=%s, sub_domain=%s, primary_user=%s, allowed_users=%s)",
         config.email_domain,
+        config.sub_domain_email,
+        config.primary_telegram_id,
         sorted(config.allowed_telegram_ids),
     )
     application.run_polling(drop_pending_updates=True)

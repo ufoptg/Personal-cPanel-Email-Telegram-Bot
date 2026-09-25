@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 @require_auth
 async def inbox_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     assert update.effective_message
+    assert update.effective_user
 
     config: Config = context.bot_data["config"]
     store: AccountStore = context.bot_data["store"]
@@ -34,7 +35,9 @@ async def inbox_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         )
         return
 
-    account = await get_tracked_account(store, config, context.args[0])
+    account = await get_tracked_account(
+        store, config, context.args[0], update.effective_user.id
+    )
     if not account:
         await update.effective_message.reply_text(
             "Unknown address. Only bot-created addresses can be checked. Use /list."
