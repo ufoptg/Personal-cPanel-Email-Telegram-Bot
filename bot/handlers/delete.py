@@ -44,14 +44,13 @@ async def delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await update.effective_message.reply_text("Invalid format. Usage: /delete *@domain.com")
             return
 
-        # Fetch tracked accounts (adjust store method if your AccountStore uses a different method name)
-        all_accounts = await store.get_all() if hasattr(store, "get_all") else []
-        
-        # Filter matching accounts for the domain or its subdomains, restricted to the user if applicable
+        # Fetch all accounts tracked by the bot
+        accounts = await store.list_all()
+
+        # Match exact domain or any subdomains ending in .target_domain
         matching_accounts = [
-            acc for acc in all_accounts
-            if (acc.domain.lower() == target_domain or acc.domain.lower().endswith(f".{target_domain}"))
-            and (not hasattr(acc, "user_id") or acc.user_id == user_id)
+            acc for acc in accounts
+            if acc.domain.lower() == target_domain or acc.domain.lower().endswith(f".{target_domain}")
         ]
 
         if not matching_accounts:
@@ -61,7 +60,7 @@ async def delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             return
 
         await update.effective_message.reply_text(
-            f"Found {len(matching_accounts)} mailbox(es) under *@{target_domain}. Deleting…"
+            f"Found {len(matching_accounts)} mailbox(es) matching *@{target_domain}. Deleting…"
         )
 
         deleted_count = 0
@@ -84,7 +83,7 @@ async def delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
         return
 
-    # Existing single account deletion logic
+    # Single account deletion logic
     domain = config.domain_for(user_id)
     localpart = resolve_localpart(target, domain, config.known_domains)
     if not localpart:
